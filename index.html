@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Lite POS Web App (V2 - Debugged)</title>
+    <title>Advanced POS Web App (V3)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://unpkg.com/html5-qrcode"></script>
@@ -16,7 +16,6 @@
         .tab-content.active { display: block; }
         .nav-btn.active { color: #4f46e5; border-top: 3px solid #4f46e5; }
         #reader video { border-radius: 1rem; object-fit: cover; }
-        /* Toast 動畫 */
         #toast { transition: opacity 0.3s, transform 0.3s; transform: translate(-50%, 20px); }
         #toast.show { opacity: 1; transform: translate(-50%, 0); }
     </style>
@@ -24,15 +23,29 @@
 <body class="bg-gray-50">
 
     <div id="toast" class="fixed top-10 left-1/2 -translate-x-1/2 z-[9999] bg-gray-800 text-white px-6 py-3 rounded-2xl shadow-2xl opacity-0 pointer-events-none text-sm font-bold flex items-center gap-2">
-        <i class="fa-solid fa-circle-exclamation text-yellow-400"></i>
-        <span id="toastMsg">找不到商品</span>
+        <i class="fa-solid fa-info-circle text-indigo-400"></i>
+        <span id="toastMsg">訊息提示</span>
+    </div>
+
+    <div id="checkoutModal" class="hidden fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl">
+            <h3 class="text-xl font-800 text-gray-800">確認結帳</h3>
+            <div class="space-y-1">
+                <label class="text-xs font-bold text-gray-400 uppercase">訂單編號 (可手動編輯)</label>
+                <input type="text" id="editOrderId" class="w-full bg-gray-100 border-none rounded-xl px-4 py-3 font-bold text-indigo-600 focus:ring-2 focus:ring-indigo-500 outline-none">
+            </div>
+            <div class="pt-2 flex gap-2">
+                <button onclick="toggleModal('checkoutModal', false)" class="flex-1 py-3 font-bold text-gray-400">取消</button>
+                <button onclick="finalConfirmCheckout()" class="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg">完成交易</button>
+            </div>
+        </div>
     </div>
 
     <section id="page-scan" class="tab-content active">
         <header class="bg-white p-4 shadow-sm sticky top-0 z-50 flex justify-between items-center">
             <h1 class="text-xl font-800 text-gray-900 italic">LITE<span class="text-indigo-600">POS</span></h1>
             <div class="text-right">
-                <p class="text-[10px] text-gray-400 uppercase leading-none">Total Amount</p>
+                <p class="text-[10px] text-gray-400 uppercase leading-none">Total</p>
                 <p class="text-xl font-800 text-indigo-600 leading-tight">$<span id="totalAmount">0</span></p>
             </div>
         </header>
@@ -41,40 +54,50 @@
             <div class="bg-white p-4 rounded-3xl shadow-sm space-y-3">
                 <div id="reader" class="w-full bg-gray-100 rounded-2xl overflow-hidden min-h-[150px]"></div>
                 <div class="flex gap-2">
-                    <button onclick="startScanner()" id="startBtn" class="flex-1 bg-indigo-600 text-white py-3 rounded-2xl font-bold shadow-lg active:scale-95 transition">
-                        <i class="fa-solid fa-camera mr-2"></i>📷 掃描
-                    </button>
+                    <button onclick="startScanner()" id="startBtn" class="flex-1 bg-indigo-600 text-white py-3 rounded-2xl font-bold shadow-lg active:scale-95 transition">📷 掃描條碼</button>
                     <button onclick="stopScanner()" class="px-4 bg-gray-100 text-gray-400 rounded-2xl">停止</button>
                 </div>
                 <div class="flex gap-2 border-t pt-3">
-                    <input type="text" id="manualInput" placeholder="輸入 EAN-13 條碼..." class="flex-1 bg-gray-50 px-4 py-2 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm">
+                    <input type="text" id="manualInput" placeholder="輸入條碼或品號加入..." class="flex-1 bg-gray-50 px-4 py-2 rounded-xl text-sm outline-none">
                     <button onclick="handleManualInput()" class="bg-gray-800 text-white px-6 py-2 rounded-xl font-bold active:scale-95">加入</button>
                 </div>
             </div>
 
-            <div id="cartList" class="space-y-3 pb-24">
-                <div class="text-center py-10 text-gray-300"><i class="fa-solid fa-cart-shopping text-4xl mb-2"></i><p>購物車是空的</p></div>
-            </div>
+            <div id="cartList" class="space-y-3 pb-24"></div>
         </main>
 
         <div class="fixed bottom-20 left-4 right-4 z-40">
-            <button onclick="checkout()" class="w-full bg-indigo-600 text-white py-4 rounded-3xl font-800 text-lg shadow-xl active:scale-95 transition">立即結帳</button>
+            <button onclick="openCheckoutModal()" class="w-full bg-indigo-600 text-white py-4 rounded-3xl font-800 text-lg shadow-xl shadow-indigo-100">結帳</button>
         </div>
     </section>
 
     <section id="page-inventory" class="tab-content">
-        <header class="bg-white p-4 shadow-sm sticky top-0 z-50 text-xl font-800">📦 商品庫管理</header>
+        <header class="bg-white p-4 shadow-sm sticky top-0 z-50 flex flex-col gap-3">
+            <h1 class="text-xl font-800 italic">庫存管理</h1>
+            <div class="relative">
+                <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                <input type="text" id="productSearch" oninput="renderInventory()" placeholder="搜尋品名、品號或條碼..." class="w-full bg-gray-100 pl-11 pr-4 py-2 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+        </header>
+
         <main class="p-4 space-y-4">
-            <div class="bg-white p-4 rounded-2xl shadow-sm space-y-3">
-                <h3 class="text-sm font-bold text-gray-500 uppercase">數據同步</h3>
-                <input type="text" id="csvUrl" placeholder="Google Sheets CSV 連結..." class="w-full bg-gray-50 px-4 py-2 rounded-xl text-sm ring-1 ring-gray-200">
+            <div class="bg-white p-5 rounded-3xl shadow-sm space-y-4 border border-indigo-50">
+                <div class="flex items-center gap-2 mb-1">
+                    <i class="fa-solid fa-cloud-arrow-down text-indigo-600"></i>
+                    <h3 class="text-sm font-bold text-gray-700">雲端同步 (Google Sheets)</h3>
+                </div>
+                <input type="text" id="csvUrl" placeholder="貼上發布後的 CSV 連結..." class="w-full bg-gray-50 px-4 py-3 rounded-xl text-xs border border-gray-100 outline-none focus:ring-2 focus:ring-indigo-500">
                 <div class="flex gap-2">
-                    <button onclick="importFromUrl()" class="flex-1 bg-green-500 text-white py-2 rounded-xl text-xs font-bold">雲端載入</button>
-                    <label class="flex-1 bg-gray-100 text-gray-700 py-2 rounded-xl text-xs font-bold text-center cursor-pointer">
+                    <button onclick="importFromUrl()" class="flex-1 bg-indigo-600 text-white py-3 rounded-xl text-xs font-bold shadow-md active:scale-95 transition">從連結同步</button>
+                    <label class="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl text-xs font-bold text-center cursor-pointer active:scale-95 transition">
                         本地 CSV <input type="file" id="fileImport" accept=".csv" class="hidden">
                     </label>
                 </div>
+                <p class="text-[10px] text-gray-400 bg-gray-50 p-2 rounded-lg">
+                    格式建議：條碼, 品名, 單價, 品號 (A, B, C, D)
+                </p>
             </div>
+
             <div id="inventoryGrid" class="grid grid-cols-2 gap-3 pb-10"></div>
         </main>
     </section>
@@ -82,52 +105,45 @@
     <section id="page-history" class="tab-content">
         <header class="bg-white p-4 shadow-sm sticky top-0 z-50 flex justify-between items-center">
             <h1 class="text-xl font-800">📜 歷史訂單</h1>
-            <button onclick="exportHistory()" class="bg-indigo-50 text-indigo-600 px-3 py-1 rounded-lg text-xs font-bold">匯出 CSV</button>
+            <button onclick="exportHistory()" class="bg-indigo-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg">匯出 CSV 明細</button>
         </header>
         <main class="p-4 space-y-3" id="historyList"></main>
     </section>
 
     <nav class="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t flex justify-around items-center h-20 z-50">
         <button onclick="switchPage('scan')" id="nav-scan" class="nav-btn flex flex-col items-center flex-1 active">
-            <i class="fa-solid fa-barcode text-xl"></i><span class="text-[10px] mt-1 font-bold">收銀掃描</span>
+            <i class="fa-solid fa-barcode text-xl"></i><span class="text-[10px] mt-1 font-bold">收銀</span>
         </button>
         <button onclick="switchPage('inventory')" id="nav-inventory" class="nav-btn flex flex-col items-center flex-1 text-gray-400">
-            <i class="fa-solid fa-box-open text-xl"></i><span class="text-[10px] mt-1 font-bold">商品庫</span>
+            <i class="fa-solid fa-box-open text-xl"></i><span class="text-[10px] mt-1 font-bold">庫存</span>
         </button>
         <button onclick="switchPage('history')" id="nav-history" class="nav-btn flex flex-col items-center flex-1 text-gray-400">
-            <i class="fa-solid fa-receipt text-xl"></i><span class="text-[10px] mt-1 font-bold">歷史紀錄</span>
+            <i class="fa-solid fa-receipt text-xl"></i><span class="text-[10px] mt-1 font-bold">紀錄</span>
         </button>
     </nav>
 
     <script>
-        // --- 資料初始化 ---
+        // --- 初始化商品資料 ---
         const demoItems = [
-            { barcode: "4710000001", name: "原味拿鐵", price: 65 },
-            { barcode: "4710000002", name: "美式咖啡", price: 45 },
-            { barcode: "4710000003", name: "起司蛋餅", price: 40 },
-            { barcode: "4710000004", name: "火腿三明治", price: 35 },
-            { barcode: "4710000005", name: "巧克力馬芬", price: 50 },
-            { barcode: "4710000006", name: "無糖綠茶", price: 25 },
-            { barcode: "4710000007", name: "瓶裝水", price: 20 },
-            { barcode: "4710000008", name: "綜合堅果", price: 120 }
+            { barcode: "471001", name: "原味拿鐵", price: 65, sku: "ITEM-001" },
+            { barcode: "471002", name: "美式咖啡", price: 45, sku: "ITEM-002" },
+            { barcode: "471003", name: "肉桂捲", price: 80, sku: "ITEM-003" }
         ];
 
-        let productDB = JSON.parse(localStorage.getItem('lite_pos_db')) || demoItems;
+        let productDB = JSON.parse(localStorage.getItem('adv_pos_db')) || demoItems;
         let cart = [];
         let html5QrCode = null;
-        let isProcessing = false; // 防止重複掃描標記
+        let isScanning = false;
 
         window.onload = () => { renderCart(); renderInventory(); renderHistory(); };
 
-        // --- Toast 提示功能 (取代 Alert) ---
-        function showToast(msg, duration = 2000) {
+        function showToast(msg) {
             const toast = document.getElementById('toast');
             document.getElementById('toastMsg').innerText = msg;
             toast.classList.add('show');
-            setTimeout(() => { toast.classList.remove('show'); }, duration);
+            setTimeout(() => { toast.classList.remove('show'); }, 2000);
         }
 
-        // --- 導覽邏輯 ---
         function switchPage(pageId) {
             document.querySelectorAll('.tab-content').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('.nav-btn').forEach(b => { b.classList.remove('active'); b.classList.add('text-gray-400'); });
@@ -137,57 +153,47 @@
             if(pageId !== 'scan') stopScanner();
         }
 
-        // --- 掃描核心 ---
+        // --- 掃描功能 ---
         function startScanner() {
             if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
-            const config = { fps: 15, qrbox: { width: 250, height: 150 } };
-            
-            html5QrCode.start({ facingMode: "environment" }, config, (code) => {
-                if (!isProcessing) {
-                    isProcessing = true;
+            html5QrCode.start({ facingMode: "environment" }, { fps: 15, qrbox: 250 }, (code) => {
+                if (!isScanning) {
+                    isScanning = true;
                     findAndAddToCart(code);
-                    setTimeout(() => { isProcessing = false; }, 1000); // 1秒冷卻防止重複掃描
+                    setTimeout(() => isScanning = false, 1000);
                 }
-            }).catch(err => showToast("無法啟動相機"));
-            
-            document.getElementById('startBtn').innerHTML = "🟢 掃描中...";
+            }).catch(() => showToast("請確認相機權限"));
+            document.getElementById('startBtn').innerText = "🟢 掃描中...";
         }
 
         function stopScanner() {
             if (html5QrCode && html5QrCode.isScanning) {
-                html5QrCode.stop().then(() => {
-                    document.getElementById('startBtn').innerHTML = "📷 掃描";
-                });
+                html5QrCode.stop().then(() => { document.getElementById('startBtn').innerText = "📷 掃描條碼"; });
             }
         }
 
         function handleManualInput() {
             const val = document.getElementById('manualInput').value;
-            if (val) {
-                findAndAddToCart(val);
-                document.getElementById('manualInput').value = '';
-            }
+            if (val) { findAndAddToCart(val); document.getElementById('manualInput').value = ''; }
         }
 
         function findAndAddToCart(code) {
-            const product = productDB.find(p => p.barcode === code.trim());
+            const product = productDB.find(p => p.barcode === code.trim() || p.sku === code.trim());
             if (product) {
-                const existing = cart.find(i => i.barcode === code.trim());
+                const existing = cart.find(i => i.barcode === product.barcode);
                 if (existing) existing.qty++;
                 else cart.push({ ...product, qty: 1 });
                 renderCart();
                 if (navigator.vibrate) navigator.vibrate(50);
             } else {
-                // 使用 Toast 取代 Alert，不會阻塞程式
-                showToast(`找不到條碼: ${code}`);
-                if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+                showToast(`找不到此條碼/品號: ${code}`);
             }
         }
 
         function renderCart() {
             const container = document.getElementById('cartList');
             if (cart.length === 0) {
-                container.innerHTML = `<div class="text-center py-10 text-gray-300"><i class="fa-solid fa-cart-shopping text-4xl mb-2"></i><p>購物車是空的</p></div>`;
+                container.innerHTML = `<div class="text-center py-10 text-gray-300"><i class="fa-solid fa-cart-shopping text-4xl mb-2"></i><p>購物車空空如也</p></div>`;
                 document.getElementById('totalAmount').innerText = "0";
                 return;
             }
@@ -195,9 +201,12 @@
             container.innerHTML = cart.map((item, index) => {
                 total += item.price * item.qty;
                 return `
-                <div class="bg-white p-4 rounded-2xl shadow-sm flex items-center gap-4 border border-gray-50">
+                <div class="bg-white p-4 rounded-2xl shadow-sm flex items-center gap-4">
                     <div class="flex-1">
-                        <h4 class="font-bold text-gray-800">${item.name}</h4>
+                        <div class="flex items-center gap-2">
+                            <h4 class="font-bold text-gray-800">${item.name}</h4>
+                            <span class="text-[9px] bg-indigo-50 text-indigo-500 px-1 rounded font-mono">${item.sku}</span>
+                        </div>
                         <p class="text-xs text-indigo-500 font-bold">$${item.price}</p>
                     </div>
                     <div class="flex items-center bg-gray-50 rounded-xl p-1">
@@ -205,113 +214,148 @@
                         <span class="w-8 text-center text-sm font-bold">${item.qty}</span>
                         <button onclick="updateQty(${index}, 1)" class="w-8 h-8 flex items-center justify-center bg-white rounded-lg shadow-sm font-bold text-gray-600">+</button>
                     </div>
-                    <button onclick="removeItem(${index})" class="text-gray-300 hover:text-red-500"><i class="fa-solid fa-circle-xmark text-xl"></i></button>
+                    <button onclick="removeItem(${index})" class="text-gray-300"><i class="fa-solid fa-circle-xmark text-xl"></i></button>
                 </div>`;
             }).join('');
             document.getElementById('totalAmount').innerText = total;
         }
 
-        function updateQty(idx, delta) {
-            cart[idx].qty += delta;
-            if (cart[idx].qty <= 0) cart.splice(idx, 1);
-            renderCart();
-        }
+        function updateQty(i, d) { cart[i].qty += d; if(cart[i].qty <= 0) cart.splice(i,1); renderCart(); }
+        function removeItem(i) { cart.splice(i,1); renderCart(); }
 
-        function removeItem(idx) { cart.splice(idx, 1); renderCart(); }
-
-        // --- 商品庫管理 ---
+        // --- 商品管理 (含搜尋與導入) ---
         function renderInventory() {
+            const query = document.getElementById('productSearch').value.toLowerCase();
             const grid = document.getElementById('inventoryGrid');
-            grid.innerHTML = productDB.map(p => `
+            const filtered = productDB.filter(p => 
+                p.name.toLowerCase().includes(query) || 
+                p.barcode.toLowerCase().includes(query) || 
+                p.sku.toLowerCase().includes(query)
+            );
+
+            grid.innerHTML = filtered.map(p => `
                 <div onclick="findAndAddToCart('${p.barcode}'); switchPage('scan');" class="bg-white p-3 rounded-2xl shadow-sm border border-transparent active:border-indigo-200 active:bg-indigo-50 transition">
-                    <p class="text-[10px] text-gray-400 truncate">#${p.barcode}</p>
-                    <p class="font-bold text-gray-800 truncate py-1">${p.name}</p>
+                    <div class="text-[9px] text-gray-400 font-mono mb-1">#${p.sku}</div>
+                    <p class="font-bold text-gray-800 truncate mb-1">${p.name}</p>
                     <p class="text-indigo-600 font-black text-sm">$${p.price}</p>
+                    <p class="text-[8px] text-gray-300 truncate mt-1 italic">${p.barcode}</p>
                 </div>
             `).join('');
         }
 
         function importFromUrl() {
             let url = document.getElementById('csvUrl').value;
-            if (!url) return showToast("請輸入連結");
+            if (!url) return showToast("請先貼上 CSV 連結");
             if (url.includes('spreadsheets/d/')) {
                 const id = url.split('/d/')[1].split('/')[0];
                 url = `https://docs.google.com/spreadsheets/d/${id}/export?format=csv`;
             }
-            Papa.parse(url, { download: true, complete: (results) => saveImportedData(results.data) });
+            Papa.parse(url, { download: true, complete: (res) => saveImportedData(res.data) });
         }
 
         document.getElementById('fileImport').addEventListener('change', (e) => {
-            Papa.parse(e.target.files[0], { complete: (results) => saveImportedData(results.data) });
+            Papa.parse(e.target.files[0], { complete: (res) => saveImportedData(res.data) });
         });
 
         function saveImportedData(data) {
+            // A=條碼, B=品名, C=單價, D=品號
             const newDB = data.filter(row => row[0] && row[1]).map(row => ({
                 barcode: row[0].toString().trim(),
                 name: row[1].toString().trim(),
-                price: parseInt(row[2]) || 0
+                price: parseInt(row[2]) || 0,
+                sku: row[3] ? row[3].toString().trim() : 'N/A'
             }));
-            if (newDB.length > 0) {
-                productDB = newDB;
-                localStorage.setItem('lite_pos_db', JSON.stringify(productDB));
-                renderInventory();
-                showToast(`成功載入 ${newDB.length} 筆商品`);
-            }
+            productDB = newDB;
+            localStorage.setItem('adv_pos_db', JSON.stringify(productDB));
+            renderInventory();
+            showToast(`成功更新 ${newDB.length} 項商品`);
         }
 
-        // --- 結帳與歷史 ---
-        function checkout() {
-            if (cart.length === 0) return showToast("購物車內無商品");
+        // --- 結帳與 CSV 導出 ---
+        function openCheckoutModal() {
+            if (cart.length === 0) return showToast("清單是空的");
+            const generatedId = 'INV' + Date.now().toString().slice(-6);
+            document.getElementById('editOrderId').value = generatedId;
+            toggleModal('checkoutModal', true);
+        }
+
+        function finalConfirmCheckout() {
+            const customId = document.getElementById('editOrderId').value || 'N/A';
             const order = {
-                id: 'ORD-' + Date.now().toString().slice(-6),
+                id: customId,
                 time: new Date().toLocaleString(),
-                items: cart.map(i => `${i.name}x${i.qty}`).join(', '),
+                items: JSON.parse(JSON.stringify(cart)),
                 total: document.getElementById('totalAmount').innerText
             };
-            const history = JSON.parse(localStorage.getItem('lite_pos_history')) || [];
+            const history = JSON.parse(localStorage.getItem('adv_pos_history')) || [];
             history.unshift(order);
-            localStorage.setItem('lite_pos_history', JSON.stringify(history));
-            showToast("結帳成功！單號: " + order.id);
+            localStorage.setItem('adv_pos_history', JSON.stringify(history));
+            
+            showToast("交易完成！");
             cart = [];
             renderCart();
             renderHistory();
+            toggleModal('checkoutModal', false);
+        }
+
+        function exportHistory() {
+            const history = JSON.parse(localStorage.getItem('adv_pos_history')) || [];
+            if (history.length === 0) return showToast("尚無紀錄可匯出");
+            
+            const rows = [];
+            history.forEach(order => {
+                order.items.forEach(item => {
+                    rows.push({
+                        "訂單編號": order.id,
+                        "交易時間": order.time,
+                        "品號": item.sku,
+                        "品名": item.name,
+                        "條碼": item.barcode,
+                        "單價": item.price,
+                        "數量": item.qty,
+                        "小計": item.price * item.qty,
+                        "整單總額": order.total
+                    });
+                });
+            });
+
+            const csv = Papa.unparse(rows);
+            const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `POS_Detail_${new Date().toISOString().slice(0,10)}.csv`;
+            link.click();
         }
 
         function renderHistory() {
-            const history = JSON.parse(localStorage.getItem('lite_pos_history')) || [];
+            const history = JSON.parse(localStorage.getItem('adv_pos_history')) || [];
             const container = document.getElementById('historyList');
             container.innerHTML = history.map((o, idx) => `
-                <div class="bg-white p-4 rounded-2xl shadow-sm space-y-2 border-l-4 border-indigo-500">
-                    <div class="flex justify-between items-start">
-                        <span class="font-800 text-gray-800">#${o.id}</span>
-                        <button onclick="deleteOrder(${idx})" class="text-gray-300 text-xs italic">刪除</button>
+                <div class="bg-white p-4 rounded-2xl shadow-sm border-l-4 border-indigo-500">
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="font-800 text-gray-800">${o.id}</span>
+                        <button onclick="deleteOrder(${idx})" class="text-gray-300 text-xs">刪除</button>
                     </div>
-                    <p class="text-sm text-gray-600 font-medium leading-tight">${o.items}</p>
-                    <div class="flex justify-between items-center pt-2 border-t border-gray-50">
-                        <span class="text-[10px] text-gray-400">${o.time}</span>
+                    <div class="space-y-1">
+                        ${o.items.map(i => `<div class="text-[11px] text-gray-600 flex justify-between"><span>${i.name} [${i.sku}] x${i.qty}</span><span>$${i.price * i.qty}</span></div>`).join('')}
+                    </div>
+                    <div class="flex justify-between items-center pt-2 mt-2 border-t border-gray-50">
+                        <span class="text-[9px] text-gray-400 font-mono">${o.time}</span>
                         <span class="font-black text-indigo-600">$${o.total}</span>
                     </div>
                 </div>
             `).join('');
         }
 
-        function deleteOrder(idx) {
-            const history = JSON.parse(localStorage.getItem('lite_pos_history')) || [];
-            history.splice(idx, 1);
-            localStorage.setItem('lite_pos_history', JSON.stringify(history));
+        function deleteOrder(i) {
+            if(!confirm("確定要刪除這筆紀錄嗎？")) return;
+            const history = JSON.parse(localStorage.getItem('adv_pos_history')) || [];
+            history.splice(i,1);
+            localStorage.setItem('adv_pos_history', JSON.stringify(history));
             renderHistory();
         }
 
-        function exportHistory() {
-            const history = JSON.parse(localStorage.getItem('lite_pos_history')) || [];
-            if (history.length === 0) return showToast("無紀錄可匯出");
-            const csv = Papa.unparse(history);
-            const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
-            link.download = `POS_Export_${new Date().toLocaleDateString()}.csv`;
-            link.click();
-        }
+        function toggleModal(id, show) { document.getElementById(id).classList.toggle('hidden', !show); }
     </script>
 </body>
 </html>

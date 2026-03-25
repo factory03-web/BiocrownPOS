@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Lite POS Web App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .nav-btn.active { color: #4f46e5; border-top: 3px solid #4f46e5; }
+        #reader video { border-radius: 1rem; object-fit: cover; }
+    </style>
+</head>
+<body class="bg-gray-50 pb-24">
+
+    <section id="page-scan" class="tab-content active">
+        <header class="bg-white p-4 shadow-sm sticky top-0 z-50 flex justify-between items-center">
+            <h1 class="text-xl font-800 text-gray-900 italic">LITE<span class="text-indigo-600">POS</span></h1>
+            <div class="text-right">
+                <p class="text-[10px] text-gray-400 uppercase leading-none">Total Amount</p>
+                <p class="text-xl font-800 text-indigo-600 leading-tight">$<span id="totalAmount">0</span></p>
+            </div>
+        </header>
+
+        <main class="p-4 space-y-4">
+            <div class="bg-white p-4 rounded-3xl shadow-sm space-y-3">
+                <div id="reader" class="w-full bg-gray-100 rounded-2xl overflow-hidden min-h-[150px]"></div>
+                <div class="flex gap-2">
+                    <button onclick="startScanner()" class="flex-1 bg-indigo-600 text-white py-3 rounded-2xl font-bold shadow-indigo-200 shadow-lg active:scale-95 transition">
+                        <i class="fa-solid fa-camera mr-2"></i>📷 掃描
+                    </button>
+                    <button onclick="stopScanner()" class="px-4 bg-gray-100 text-gray-400 rounded-2xl">停止</button>
+                </div>
+                <div class="flex gap-2 border-t pt-3">
+                    <input type="text" id="manualInput" placeholder="輸入 EAN-13 條碼..." class="flex-1 bg-gray-50 px-4 py-2 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm">
+                    <button onclick="handleManualInput()" class="bg-gray-800 text-white px-6 py-2 rounded-xl font-bold active:scale-95">加入</button>
+                </div>
+            </div>
+
+            <div id="cartList" class="space-y-3">
+                <div class="text-center py-10 text-gray-300">
+                    <i class="fa-solid fa-cart-shopping text-4xl mb-2"></i>
+                    <p>購物車是空的</p>
+                </div>
+            </div>
+        </main>
+
+        <div class="fixed bottom-20 left-4 right-4 z-40">
+            <button onclick="checkout()" class="w-full bg-indigo-600 text-white py-4 rounded-3xl font-800 text-lg shadow-xl active:scale-95 transition shadow-indigo-200">
+                立即結帳
+            </button>
+        </div>
+    </section>
+
+    <section id="page-inventory" class="tab-content">
+        <header class="bg-white p-4 shadow-sm sticky top-0 z-50">
+            <h1 class="text-xl font-800">📦 商品庫管理</h1>
+        </header>
+        <main class="p-4 space-y-4">
+            <div class="bg-white p-4 rounded-2xl shadow-sm space-y-3">
+                <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider">數據同步</h3>
+                <input type="text" id="csvUrl" placeholder="Google Sheets CSV 連結..." class="w-full bg-gray-50 px-4 py-2 rounded-xl text-sm border-none outline-none ring-1 ring-gray-200">
+                <div class="flex gap-2">
+                    <button onclick="importFromUrl()" class="flex-1 bg-green-500 text-white py-2 rounded-xl text-xs font-bold shadow-md">雲端載入</button>
+                    <label class="flex-1 bg-gray-100 text-gray-700 py-2 rounded-xl text-xs font-bold text-center cursor-pointer shadow-sm">
+                        本地 CSV <input type="file" id="fileImport" accept=".csv" class="hidden">
+                    </label>
+                </div>
+            </div>
+
+            <div id="inventoryGrid" class="grid grid-cols-2 gap-3">
+                </div>
+        </main>
+    </section>
+
+    <section id="page-history" class="tab-content">
+        <header class="bg-white p-4 shadow-sm sticky top-0 z-50 flex justify-between items-center">
+            <h1 class="text-xl font-800">📜 歷史訂單</h1>
+            <button onclick="exportHistory()" class="bg-indigo-50 text-indigo-600 px-3 py-1 rounded-lg text-xs font-bold">匯出 CSV</button>
+        </header>
+        <main class="p-4 space-y-3" id="historyList">
+            </main>
+    </section>
+
+    <nav class="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-md border-t border-gray-100 flex justify-around items-center h-20 z-50">
+        <button onclick="switchPage('scan')" id="nav-scan" class="nav-btn flex flex-col items-center flex-1 active">
+            <i class="fa-solid fa-barcode text-xl"></i><span class="text-[10px] mt-1 font-bold">收銀掃描</span>
+        </button>
+        <button onclick="switchPage('inventory')" id="nav-inventory" class="nav-btn flex flex-col items-center flex-1 text-gray-400">
+            <i class="fa-solid fa-box-open text-xl"></i><span class="text-[10px] mt-1 font-bold">商品庫</span>
+        </button>
+        <button onclick="switchPage('history')" id="nav-history" class="nav-btn flex flex-col items-center flex-1 text-gray-400">
+            <i class="fa-solid fa-receipt text-xl"></i><span class="text-[10px] mt-1 font-bold">歷史紀錄</span>
+        </button>
+    </nav>
+
+    <script>
+        // --- 初始化資料庫 (示範商品) ---
+        const demoItems = [
+            { barcode: "4710000001", name: "原味拿鐵", price: 65 },
+            { barcode: "4710000002", name: "美式咖啡", price: 45 },
+            { barcode: "4710000003", name: "起司蛋餅", price: 40 },
+            { barcode: "4710000004", name: "火腿三明治", price: 35 },
+            { barcode: "4710000005", name: "巧克力馬芬", price: 50 },
+            { barcode: "4710000006", name: "無糖綠茶", price: 25 },
+            { barcode: "4710000007", name: "瓶裝水", price: 20 },
+            { barcode: "4710000008", name: "綜合堅果", price: 120 }
+        ];
+
+        let productDB = JSON.parse(localStorage.getItem('lite_pos_db')) || demoItems;
+        let cart = [];
+        let html5QrCode = null;
+
+        window.onload = () => {
+            renderCart();
+            renderInventory();
+            renderHistory();
+        };
+
+        // --- 核心導覽邏輯 ---
+        function switchPage(pageId) {
+            document.querySelectorAll('.tab-content').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active', 'text-gray-400'));
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.add('text-gray-400'));
+
+            document.getElementById(`page-${pageId}`).classList.add('active');
+            document.getElementById(`nav-${pageId}`).classList.add('active');
+            document.getElementById(`nav-${pageId}`).classList.remove('text-gray-400');
+            
+            if(pageId !== 'scan') stopScanner();
+        }
+
+        // --- ① 掃描邏輯 ---
+        function startScanner() {
+            if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
+            const config = { fps: 10, qrbox: { width: 250, height: 150 } };
+            html5QrCode.start({ facingMode: "environment" }, config, (code) => {
+                findAndAddToCart(code);
+                if (navigator.vibrate) navigator.vibrate(50);
+            });
+        }
+
+        function stopScanner() {
+            if (html5QrCode && html5QrCode.isScanning) {
+                html5QrCode.stop();
+            }
+        }
+
+        function handleManualInput() {
+            const val = document.getElementById('manualInput').value;
+            if (val) {
+                findAndAddToCart(val);
+                document.getElementById('manualInput').value = '';
+            }
+        }
+
+        function findAndAddToCart(code) {
+            const product = productDB.find(p => p.barcode === code);
+            if (product) {
+                const existing = cart.find(i => i.barcode === code);
+                if (existing) existing.qty++;
+                else cart.push({ ...product, qty: 1 });
+                renderCart();
+            } else {
+                alert("未找到此商品：" + code);
+            }
+        }
+
+        function renderCart() {
+            const container = document.getElementById('cartList');
+            if (cart.length === 0) {
+                container.innerHTML = `<div class="text-center py-10 text-gray-300"><i class="fa-solid fa-cart-shopping text-4xl mb-2"></i><p>購物車是空的</p></div>`;
+                document.getElementById('totalAmount').innerText = "0";
+                return;
+            }
+
+            let total = 0;
+            container.innerHTML = cart.map((item, index) => {
+                total += item.price * item.qty;
+                return `
+                <div class="bg-white p-4 rounded-2xl shadow-sm flex items-center gap-4 border border-gray-50">
+                    <div class="flex-1">
+                        <h4 class="font-bold text-gray-800">${item.name}</h4>
+                        <p class="text-xs text-indigo-500 font-bold">$${item.price}</p>
+                    </div>
+                    <div class="flex items-center bg-gray-50 rounded-xl p-1">
+                        <button onclick="updateQty(${index}, -1)" class="w-8 h-8 flex items-center justify-center bg-white rounded-lg shadow-sm font-bold text-gray-600">-</button>
+                        <span class="w-8 text-center text-sm font-bold">${item.qty}</span>
+                        <button onclick="updateQty(${index}, 1)" class="w-8 h-8 flex items-center justify-center bg-white rounded-lg shadow-sm font-bold text-gray-600">+</button>
+                    </div>
+                    <button onclick="removeItem(${index})" class="text-gray-300 hover:text-red-500 transition"><i class="fa-solid fa-circle-xmark text-xl"></i></button>
+                </div>`;
+            }).join('');
+            document.getElementById('totalAmount').innerText = total;
+        }
+
+        function updateQty(idx, delta) {
+            cart[idx].qty += delta;
+            if (cart[idx].qty <= 0) cart.splice(idx, 1);
+            renderCart();
+        }
+
+        function removeItem(idx) {
+            cart.splice(idx, 1);
+            renderCart();
+        }
+
+        // --- ② 商品庫邏輯 ---
+        function renderInventory() {
+            const grid = document.getElementById('inventoryGrid');
+            grid.innerHTML = productDB.map(p => `
+                <div onclick="findAndAddToCart('${p.barcode}'); switchPage('scan');" class="bg-white p-3 rounded-2xl shadow-sm border border-transparent active:border-indigo-200 active:bg-indigo-50 transition">
+                    <p class="text-[10px] text-gray-400 truncate">#${p.barcode}</p>
+                    <p class="font-bold text-gray-800 truncate py-1">${p.name}</p>
+                    <p class="text-indigo-600 font-black text-sm">$${p.price}</p>
+                </div>
+            `).join('');
+        }
+
+        // CSV 匯入處理
+        function importFromUrl() {
+            let url = document.getElementById('csvUrl').value;
+            if (!url) return alert("請輸入 Google Sheets 連結");
+            if (url.includes('spreadsheets/d/')) {
+                const id = url.split('/d/')[1].split('/')[0];
+                url = `https://docs.google.com/spreadsheets/d/${id}/export?format=csv`;
+            }
+            Papa.parse(url, {
+                download: true,
+                complete: (results) => saveImportedData(results.data)
+            });
+        }
+
+        document.getElementById('fileImport').addEventListener('change', (e) => {
+            Papa.parse(e.target.files[0], {
+                complete: (results) => saveImportedData(results.data)
+            });
+        });
+
+        function saveImportedData(data) {
+            // A=條碼, B=品名, C=單價
+            const newDB = data.filter(row => row[0] && row[1]).map(row => ({
+                barcode: row[0].toString().trim(),
+                name: row[1].toString().trim(),
+                price: parseInt(row[2]) || 0
+            }));
+            if (newDB.length > 0) {
+                productDB = newDB;
+                localStorage.setItem('lite_pos_db', JSON.stringify(productDB));
+                renderInventory();
+                alert(`成功載入 ${newDB.length} 筆商品`);
+            }
+        }
+
+        // --- ③ 結帳與歷史紀錄 ---
+        function checkout() {
+            if (cart.length === 0) return alert("購物車內無商品");
+            const order = {
+                id: 'ORD-' + Date.now().toString().slice(-6),
+                time: new Date().toLocaleString(),
+                items: cart.map(i => `${i.name}x${i.qty}`).join(', '),
+                total: document.getElementById('totalAmount').innerText
+            };
+            const history = JSON.parse(localStorage.getItem('lite_pos_history')) || [];
+            history.unshift(order);
+            localStorage.setItem('lite_pos_history', JSON.stringify(history));
+            
+            alert("結帳成功！訂單編號：" + order.id);
+            cart = [];
+            renderCart();
+            renderHistory();
+        }
+
+        function renderHistory() {
+            const history = JSON.parse(localStorage.getItem('lite_pos_history')) || [];
+            const container = document.getElementById('historyList');
+            container.innerHTML = history.map((o, idx) => `
+                <div class="bg-white p-4 rounded-2xl shadow-sm space-y-2 border-l-4 border-indigo-500">
+                    <div class="flex justify-between items-start">
+                        <span class="font-800 text-gray-800">#${o.id}</span>
+                        <button onclick="deleteOrder(${idx})" class="text-gray-300 text-xs italic">刪除</button>
+                    </div>
+                    <p class="text-sm text-gray-600 font-medium leading-tight">${o.items}</p>
+                    <div class="flex justify-between items-center pt-2 border-t border-gray-50">
+                        <span class="text-[10px] text-gray-400">${o.time}</span>
+                        <span class="font-black text-indigo-600">$${o.total}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function deleteOrder(idx) {
+            const history = JSON.parse(localStorage.getItem('lite_pos_history')) || [];
+            history.splice(idx, 1);
+            localStorage.setItem('lite_pos_history', JSON.stringify(history));
+            renderHistory();
+        }
+
+        function exportHistory() {
+            const history = JSON.parse(localStorage.getItem('lite_pos_history')) || [];
+            if (history.length === 0) return alert("無紀錄可匯出");
+            const csv = Papa.unparse(history);
+            const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `POS_Export_${new Date().toLocaleDateString()}.csv`;
+            link.click();
+        }
+    </script>
+</body>
+</html>
